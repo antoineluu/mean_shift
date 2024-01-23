@@ -4,17 +4,17 @@ import numpy as np
 
 class Mean_Shift_Tracker:
     def __init__(self, x_center:int, y_center:int, obj_width:int, obj_height:int):
-        # 目标框的中间
+        # Centre de la boîte cible
         self.prev_cx = x_center
         self.prev_cy = y_center
         self.curr_cx = x_center
         self.curr_cy = y_center
-        
-        # Bhattacharyya 系数
+
+        # Coefficient de Bhattacharyya
         self.prev_similarity_BC = 0.0
         self.curr_similarity_BC = 0.0
-        
-        # 保证目标高宽为奇数，方便处理
+
+        # Assure que la largeur et la hauteur de l'objet sont impaires pour faciliter le traitement
         if( obj_width %2 == 0 ):
             obj_width += 1    
         if( obj_height %2 ==0 ):
@@ -25,26 +25,26 @@ class Mean_Shift_Tracker:
         self.curr_width = obj_width
         self.curr_height = obj_height 
         
-        # 模型参数定义
+        # Définition des paramètres du modèle
         self.bins_per_channel = 16
         self.bin_size = int( np.floor( 256 / self.bins_per_channel) )
         self.model_dim = self.bins_per_channel ** 3
         
-        # 模型参数
+        # Paramètres du modèle
         self.target_model:np.ndarray = np.zeros( self.model_dim )
         self.prev_model:np.ndarray = np.zeros( self.model_dim )
         self.curr_model:np.ndarray = np.zeros( self.model_dim )
         
-        # 在颜色直方图中分配每个像素值的索引的数组
+        # Dans l'histogramme de couleur, attribue un index à chaque valeur de pixel
         self.combined_index:np.ndarray = np.zeros([self.curr_height , self.curr_width])
         self.max_itr = 5
         
-        # 初始化模型核
+        # Initialise le noyau du modèle
         self.kernel_mask = self.init_kernel(self.curr_width, self.curr_height)
     
     def init_kernel(self, w, h):
         """ 
-        初始化模型的掩码核
+        Initialise le noyau de masque du modèle
         """
         half_width = ( w -1 ) * 0.5
         half_height = ( h -1 ) * 0.5        
@@ -66,21 +66,21 @@ class Mean_Shift_Tracker:
     
 
     def update_target_model(self, ref_image):
-        """利用输入图像计算初始追踪目标的模型"""
+        """Utilise l'image de référence pour calculer le modèle initial de suivi de la cible"""
         self.update_object_model(ref_image)
         self.target_model = np.copy(self.curr_model)
     
     def update_object_model(self, image:np.ndarray):
-        """根据输入图像更新颜色模型"""
+        """Met à jour le modèle de couleur en fonction de l'image d'entrée"""
         self.curr_model = self.curr_model * 0.0
         self.combined_index = self.combined_index * 0
         
-        # 转换输入图像的数据类型
+        # Convertit le type de données de l'image d'entrée
         image = image.astype( float )
         half_width = int( ( self.curr_width -1 ) * 0.5 )
         half_height = int( ( self.curr_height -1 ) * 0.5 )
         
-        # 从图像中框选出检测框内的区域
+        # Sélectionne la région à l'intérieur de la boîte de détection de l'image
         obj_image = image[self.curr_cy - half_height: self.curr_cy + half_height+1, 
                           self.curr_cx - half_width : self.curr_cx + half_width +1, :]
 
@@ -88,11 +88,11 @@ class Mean_Shift_Tracker:
         # plt.imshow(obj_image/256)
         # plt.show()
 
-        # 对该区域的颜色进行建模
-        index_matrix =  obj_image / self.bin_size  # 将色彩的深度降低至16位
+        # Modélise les couleurs de cette région
+        index_matrix =  obj_image / self.bin_size  # Réduit la profondeur des couleurs à 16 bits
         index_matrix =  np.floor(index_matrix).astype(int)
         b_index, g_index, r_index  = index_matrix[:,:,0], index_matrix[:,:,1], index_matrix[:,:,2], 
-        # 生成位置色彩索引
+        # Génère l'index de couleur de position
         combined_index  =   b_index * np.power(self.bins_per_channel, 2) +\
                             self.bins_per_channel * g_index +\
                             r_index
@@ -103,21 +103,21 @@ class Mean_Shift_Tracker:
         else:
             kernel_mask = self.kernel_mask
         # print(combined_index.shape, self.kernel_mask.shape)
-        # 更新颜色直方分布模型
+        # Met à jour le modèle de distribution de l'histogramme de couleur
         for i in range (self.curr_height):
             for j in range(self.curr_width):
                 self.curr_model[ combined_index[ i , j ] ] += kernel_mask[i, j] 
-        # 正则化
+        # Normalise
         sum_val = np.sum(self.curr_model)
         self.curr_model = self.curr_model / float(sum_val)
     
 
     def update_similarity_value(self):
         """ 
-        计算并更新之前一帧与这一帧的BC距离
+        Calcule et met à jour la distance BC entre la trame précédente et la trame actuelle
         """
         self.curr_similarity_BC  = 0.0
-        # 计算两个分布间的BC相似度
+        # Calcule la similarité BC entre les deux distributions
         for i in range(self.model_dim):
             if(self.target_model[i] !=0 and self.curr_model[i] != 0 ):
                 self.curr_similarity_BC += np.sqrt(self.target_model[i] * self.curr_model[i])
@@ -125,7 +125,7 @@ class Mean_Shift_Tracker:
 
     def perform_mean_shift(self, image):
         """
-        mean shift迭代
+        Itération de la méthode mean shift
         """
         half_width = (self.curr_width -1) * 0.5
         half_height = (self.curr_height -1) * 0.5
@@ -134,19 +134,19 @@ class Mean_Shift_Tracker:
         tmp_x = 0.0
         tmp_y = 0.0
         
-        # 用上一轮的框中心初始化本轮的中心
+        # Initialise le centre de la boîte de la trame précédente pour la trame actuelle
         self.curr_cx = self.prev_cx
         self.curr_cy = self.prev_cy
         
-        # 利用mean shift算法迭代更新
+        # Utilise l'algorithme mean shift pour itérativement mettre à jour
         for _ in range(self.max_itr):
-            # 利用上一轮的目标位置检验本轮目标的置信度
+            # Utilise la position précédente de la cible pour évaluer la confiance de la cible actuelle
             self.update_object_model(image)
             self.update_similarity_value()
             self.prev_similarity_BC = self.curr_similarity_BC
             feature_ratio = self.target_model / ( self.curr_model + 1e-5 )           
             
-            # 计算新的目标位置
+            # Calcule la nouvelle position de la cible
             for i in range (self.curr_height):
                 for j in range(self.curr_width):     
                     tmp_x += (j - half_width) * feature_ratio[self.combined_index[ i , j ]]
@@ -156,42 +156,41 @@ class Mean_Shift_Tracker:
             mean_shift_x = tmp_x / norm_factor 
             mean_shift_y = tmp_y / norm_factor 
             
-            # 利用 mean-shift 更新目标位置
+            # Utilise mean-shift pour mettre à jour la position de la cible
             self.curr_cx += np.round(mean_shift_x) 
             self.curr_cy += np.round(mean_shift_y) 
             self.curr_cx = int(self.curr_cx)
             self.curr_cy = int(self.curr_cy)
             
-            # 重新计算模型
+            # Recalcule le modèle
             self.update_object_model(image)
-            # 计算相似度
+            # Calcule la similarité
             self.update_similarity_value()
-            # 微调搜索框的位置
+            # Ajuste finement la position de la boîte de recherche
             while(self.curr_similarity_BC - self.prev_similarity_BC < -0.01):
                 self.curr_cx = int(np.floor((self.curr_cx + self.prev_cx) * 0.5))
                 self.curr_cy = int(np.floor((self.curr_cy + self.prev_cy) * 0.5))
-                # 检查模型是否收敛
+                # Vérifie si le modèle a convergé
                 self.update_object_model(image)
                 self.update_similarity_value()
                 diff_x = self.prev_cx - self.curr_cx
                 diff_y = self.prev_cy - self.curr_cy
-                # 勾股定理计算更新前后，中心的距离
+                # Calcule la distance entre les centres avant et après la mise à jour en utilisant le théorème de Pythagore
                 euc_dist = np.power(diff_x , 2) + np.power(diff_y ,2)
-                # 检查是否收敛
+                # Vérifie la convergence
                 if(euc_dist <= 2 ):
                     break
                 
             diff_x = self.prev_cx - self.curr_cx
             diff_y = self.prev_cy - self.curr_cy
             
-            # 再次微调
+            # Ajuste finement à nouveau
             euc_dist = np.power( diff_x , 2) + np.power( diff_y ,2 )
             
             self.prev_cx  = self.curr_cx
             self.prev_cy  = self.curr_cy
 
-            # 检查收敛
+            # Vérifie la convergence
             if( euc_dist <= 2 ):
                 break
-            
-        
+    
